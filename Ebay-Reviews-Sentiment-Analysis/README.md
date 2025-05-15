@@ -2,4 +2,4 @@ In this project, the data from the ebay_reviews.csv file (downloaded from Kaggle
 
 Dataset Used: Ebay Reviews Dataset (https://www.kaggle.com/datasets/wojtekbonicki/ebay-reviews)
 
-Test Accuracy of the Trained Model: 94.3%
+Test Accuracy of the Trained Model: 94.43%
