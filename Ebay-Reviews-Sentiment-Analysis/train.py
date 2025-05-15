@@ -40,7 +40,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # vocab_size = VOCAB_SIZE + 3 to accomodate the 3 spacial tokens <PAD>, <TTL> and <UNK>
 model = SentimentAnalyzerNetwork(vocab_size=VOCAB_SIZE + 3).to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.5)
+scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.75)
 
 train_loss_history = []
 train_acc_history = []
