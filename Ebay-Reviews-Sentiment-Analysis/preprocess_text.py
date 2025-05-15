@@ -13,12 +13,6 @@ from config import DATASET_PATH, VOCAB_SIZE, MAX_SEQ_LENGTH
 # Load the dataset as a pandas dataframe
 df = pd.read_csv(DATASET_PATH)
 
-"""
-Remove Null Rows
-"""
-# Retain only the rows that contain a review title or review content AND a rating
-df = df[((df["review title"].notna()) | (df["review content"].notna())) & (df["rating"].notna())]
-df = df[(df["review title"].str.strip() != "") | (df["review content"].str.strip() != "")]
 
 """
 Clean Text
@@ -45,6 +39,7 @@ df["review content"] = df["review content"].astype(str).apply(clean_text)
 
 print("----- Finished cleaning text -----")
 
+
 """
 Tokenize, Remove Stopwords and Lemmatize
 """
@@ -60,15 +55,16 @@ def tokenize_and_lemmatize_text(text):
 
     # Remove all non-alphabetical tokens and stopwords and return the base forms
     # (lemmas) of the remaining tokens
-    return [token.lemma_ for token in doc if token.is_alpha and token.text not in stop_words]
+    return [token.lemma_ for token in doc if (token.is_alpha) and (token.text not in stop_words)]
 
 df["review title"] = df["review title"].apply(tokenize_and_lemmatize_text)
 df["review content"] = df["review content"].apply(tokenize_and_lemmatize_text)
 
 print("----- Finished tokenizing and lemmatizing text -----")
 
+
 """
-Build Vocabulary and Encode Tokens and Ratings to Numpy Arrays
+Build Vocabulary
 """
 # Add all tokens from all review titles and review content into a single list
 all_tokens = [token for row in zip(df["review title"], df["review content"]) for token_list in row for token in token_list]
@@ -88,40 +84,58 @@ with open("Ebay-Reviews-Sentiment-Analysis/Data/Vocabulary.pkl", "wb") as f:
 # Mapping of the ratings to the corresponding sentiments
 rating_to_sentiment = {1: 0, 2: 0, 3: 1, 4: 2, 5: 2}
 
-# Initialize X and y as numpy arrays filled with zeros (to make sure there is enough memory to store the arrays)
-# Use unsigned 16-bit integers to represent tokens (can represent upto 65535)
-X = np.zeros((len(df.values), MAX_SEQ_LENGTH), dtype=np.uint16)
-# Use unsigned 8-bit integers to represent sentiments (labels)
-y = np.zeros(len(df.values), dtype=np.uint8)
+print("----- Finished building vocabulary -----")
 
-for row_index, row_data in enumerate(df.values):
-    # Add special token <TTL> to mark the beginning of the title
-    X[row_index, 0] = vocab["<TTL>"]
-    token_index = 1
 
-    # Encode title tokens into X (Truncate if necessary to fit within max length)
-    # The tokens not included in vocabulary will be replaced by the special token <UNK> (unknown)
-    for token in row_data[1][:len(row_data[1]) if len(row_data[1]) < (MAX_SEQ_LENGTH - token_index) else MAX_SEQ_LENGTH - token_index]:
-        X[row_index, token_index] = vocab.get(token, vocab["<UNK>"])
-        token_index += 1
+"""
+Encode Tokens and Ratings
+"""
+X, y = [], []
 
-    # Add the special token to mark the end of the title and content tokens only if the number of tokens already
-    # added (from the title) does not exceed MAX_SEQ_LENGTH
-    if token_index < MAX_SEQ_LENGTH:
-        # Add special token <TTL> to mark the end of the title
-        X[row_index, token_index] = vocab["<TTL>"]
-        token_index += 1
+for row_data in df.values:
+    title_tokens = row_data[1]
+    content_tokens = row_data[2]
 
-        # Encode content tokens into X (Truncate if necessary to fit within max length)
-        # The tokens not included in vocabulary will be replaced by the special token <UNK> (unknown)
-        for token in row_data[2][:len(row_data[2]) if len(row_data[2]) < (MAX_SEQ_LENGTH - token_index) else MAX_SEQ_LENGTH - token_index]:
-            X[row_index, token_index] = vocab.get(token, vocab["<UNK>"])
+    # Check if the review (title or content) contains any tokens
+    if len(title_tokens) + len(content_tokens) > 0:
+        # Initialize a list of length MAX_SEQ_LENGTH filled with 0s (special token <PAD>)
+        encoded_tokens = [vocab["<PAD>"]] * MAX_SEQ_LENGTH
+        token_index = 0
+
+        # Check if the review title contains any tokens
+        if len(title_tokens) > 0:
+            # Add special token <TTL> to mark the beginning of the title
+            encoded_tokens[token_index] = vocab["<TTL>"]
             token_index += 1
 
-    # Assign sentiment label
-    y[row_index] = rating_to_sentiment.get(row_data[3], 0)
+            # Encode title tokens
+            # Truncate if necessary to fit within max length (Always leave room for the special token <TTL> marking end of the title)
+            # The tokens not included in vocabulary will be replaced by the special token <UNK> (unknown)
+            tokens_available = MAX_SEQ_LENGTH - token_index - 1
+            for token in title_tokens[:tokens_available]:
+                encoded_tokens[token_index] = vocab.get(token, vocab["<UNK>"])
+                token_index += 1
+
+            # Add special token <TTL> to mark the end of the title
+            encoded_tokens[token_index] = vocab["<TTL>"]
+            token_index += 1
+
+        # Encode content tokens
+        # Truncate if necessary to fit within max length
+        # The tokens not included in vocabulary will be replaced by the special token <UNK> (unknown)
+        tokens_available = MAX_SEQ_LENGTH - token_index
+        for token in content_tokens[:tokens_available]:
+            encoded_tokens[token_index] = vocab.get(token, vocab["<UNK>"])
+            token_index += 1
+
+        X.append(encoded_tokens)
+        y.append(rating_to_sentiment[row_data[3]])
+
+X = np.array(X, dtype=np.uint16)
+y = np.array(y, dtype=np.uint8)
 
 print("----- Finished encoding tokens and ratings -----")
+
 
 """
 Save Preprocessed Data as Numpy Arrays
